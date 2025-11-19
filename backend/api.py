@@ -8,6 +8,8 @@ from rdkit import Chem
 from src.cleaner import clean_molecule
 from src.analyzer import calc_descriptors, lipinski_rule_of_5, veber_rule
 
+from src.analyzer import calc_descriptors, lipinski_rule_of_5, veber_rule, molecular_weight_rule
+
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI(title="Chem-Cleanser API", version="0.1.0")
@@ -28,6 +30,8 @@ class AnalyzeResponse(BaseModel):
     smiles: List[str]
     lipinski_pass: List[bool]
     veber_pass: List[bool]
+    mw_pass: List[bool]  # Molecular Weight filter pass/fail
+
 
 @app.post("/clean")
 def clean(smiles_data: SmilesList):
@@ -39,23 +43,24 @@ def clean(smiles_data: SmilesList):
 
 @app.post("/analyze", response_model=AnalyzeResponse)
 def analyze_smiles(request: SmilesList):
-    results, lipinski, veber = analyze_molecules(request.smiles)
+    results, lipinski, veber, mw = analyze_molecules(request.smiles)
     return AnalyzeResponse(
         smiles=results,
         lipinski_pass=lipinski,
-        veber_pass=veber
+        veber_pass=veber,
+        mw_pass=mw
     )
 
 @app.post("/pipeline", response_model=AnalyzeResponse)
 def pipeline(smiles_data: SmilesList):
     try:
-        # clean + analyze combined
         cleaned = [clean_molecule(s) for s in smiles_data.smiles]
-        results, lipinski, veber = analyze_molecules(cleaned)
+        results, lipinski, veber, mw = analyze_molecules(cleaned)
         return AnalyzeResponse(
             smiles=results,
             lipinski_pass=lipinski,
-            veber_pass=veber
+            veber_pass=veber,
+            mw_pass=mw
         )
     except Exception as e:
         import traceback
@@ -66,6 +71,7 @@ def analyze_molecules(smiles_list: List[str]):
     results = []
     lipinski = []
     veber = []
+    mw = []
     for smi in smiles_list:
         mol = Chem.MolFromSmiles(smi)
         if mol is None:
@@ -74,7 +80,9 @@ def analyze_molecules(smiles_list: List[str]):
         results.append(smi)
         lipinski.append(lipinski_rule_of_5(desc))
         veber.append(veber_rule(desc))
-    return results, lipinski, veber
+        mw.append(molecular_weight_rule(desc))
+    return results, lipinski, veber, mw
+
 
 # CORS setup
 origins = [
