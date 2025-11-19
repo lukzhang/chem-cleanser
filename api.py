@@ -1,7 +1,7 @@
 # api.py
 
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, validator, Field
 from typing import List
 from rdkit import Chem
 
@@ -13,7 +13,16 @@ from fastapi.middleware.cors import CORSMiddleware
 app = FastAPI(title="Chem-Cleanser API", version="0.1.0")
 
 class SmilesList(BaseModel):
-    smiles: List[str]
+    smiles: List[str] = Field(
+        ...,
+        example=["CCO", "c1ccccc1", "CC(=O)Oc1ccccc1C(=O)O"]
+    )
+
+    @validator('smiles')
+    def check_not_empty(cls, v):
+        if not v or len(v) == 0:
+            raise ValueError('smiles list must not be empty')
+        return v
 
 class AnalyzeResponse(BaseModel):
     smiles: List[str]
@@ -60,16 +69,12 @@ def analyze_molecules(smiles_list: List[str]):
     for smi in smiles_list:
         mol = Chem.MolFromSmiles(smi)
         if mol is None:
-            results.append("")  # or "Invalid SMILES"
-            lipinski.append(False)
-            veber.append(False)
-            continue
+            raise HTTPException(status_code=400, detail=f"Invalid SMILES string: {smi}")
         desc = calc_descriptors(mol)
         results.append(smi)
         lipinski.append(lipinski_rule_of_5(desc))
         veber.append(veber_rule(desc))
     return results, lipinski, veber
-
 
 # CORS setup
 origins = [
